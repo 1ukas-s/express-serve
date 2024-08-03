@@ -1,0 +1,28 @@
+{
+	"level": {
+		"1": {
+			"sublevel": {
+				"1": {
+					"unit1": { "name": "Unit 1", "value": "Value 1" },
+					"unit2": { "name": "Unit 2", "value": "Value 2" }
+				},
+				"2": {
+					"unit1": { "name": "Unit 3", "value": "Value 3" },
+					"unit2": { "name": "Unit 4", "value": "Value 4" }
+				}
+			}
+		},
+		"2": {
+			"sublevel": {
+				"1": {
+					"unit1": { "name": "Unit 5", "value": "Value 5" },
+					"unit2": { "name": "Unit 6", "value": "Value 6" }
+				},
+				"2": {
+					"unit1": { "name": "Unit 7", "value": "Value 7" },
+					"unit2": { "name": "Unit 8", "value": "Value 8" }
+				}
+			}
+		}
+	}
+}
