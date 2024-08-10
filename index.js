@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs').promises;
+const fileType = require('file-type');
 
 const PORT = 3000;
 const HOST = '0.0.0.0';
@@ -8,7 +9,7 @@ const app = express();
 
 const templateStrings = [
 	'<!DOCTYPE html><html><head><meta http-equiv="content-type" content="text/html; charset=UTF-8"><title>',
-	'</title></head><body><h1>',
+	'</title></head><body style="color: rgb(210, 210, 210); background-color: rgb(20, 20, 20);"><h1>',
 	'</h1><hr><pre>',
 	'</pre></body></html>'
 ]
@@ -17,7 +18,7 @@ app.listen(PORT, HOST);
 console.log(`Server started on ${HOST == '0.0.0.0' || HOST == '127.0.0.1' ? 'localhost' : HOST}:${PORT}`);
 
 app.get('*', handleGET);
-app.post('*', handlePOST);
+//app.post('*', handlePOST);
 
 function getLine(file, href) {
 	if (file.type == 'directory') {
@@ -32,14 +33,14 @@ function getLine(file, href) {
 }
 
 function formatDateString(dateString) {
-	let date = dateString.toString().split(' ').splice(1, 4);
-	let time = date.pop().split(':'); time.pop();
+	const date = dateString.toString().split(' ').splice(1, 4);
+	const time = date.pop().split(':'); time.pop();
 	date.push(date.reverse().shift());
 	return date.join('-') + ' ' + time.join(':');
 }
 
 function getExtension(filename) {
-	let arr = filename.split('.');
+	const arr = filename.split('.');
 	return arr.length > 1 && (arr[0] || arr.length > 2) ? arr[arr.length - 1] : '';
 }
 
@@ -50,13 +51,13 @@ async function handleGET(req, res) {
 		size: '',
 	}];
 	
-	let indexStrings = {
+	const indexStrings = {
 		title: `Index of ${decodeURI(req.originalUrl)}`,
 		header: `Index of ${decodeURI(req.originalUrl)}`,
 		href: `${req.protocol}://${req.headers.host}${req.originalUrl}`,
 	};
 
-	let dir = path.join(__dirname, decodeURI(req.path));
+	const dir = path.join(__dirname, decodeURI(req.path));
 	
 	try {
 		let stats = await fs.stat(dir);
@@ -76,11 +77,32 @@ async function handleGET(req, res) {
 				});
 			}
 		} else {
-			return res.sendFile(dir);
+			const typeFromFile = await fileType.fromFile(dir);
+			if (typeFromFile) {return res.sendFile(dir)}
+			const fileBuffer = await fs.readFile(dir, 'utf8');
+			try {
+				let fileData = JSON.parse(fileBuffer);
+				let query = req.query;
+				let commonKeys = getCommonKeys(fileData, query);
+				while (commonKeys.length) {
+					for (const param of commonKeys) {
+						fileData = fileData[param][req.query[param]];
+						if (!fileData) {
+							return res.send({ Error: 'Data not found.' });
+						} else {
+							delete query[param];
+						}
+					}
+					commonKeys = getCommonKeys(fileData, query);
+				}
+				return res.json(fileData);
+			} catch (err) {
+				return res.sendFile(dir);
+			}
 		}
 	} catch (err) {
 		console.log('Error: ', err);
-		return res.status(500).send('500 - Internal Server Error');
+		return res.status(404).send('404 - File Not Found');
 	}
 	
 	return res.send(
@@ -94,19 +116,23 @@ async function handleGET(req, res) {
 	);
 }
 
+/*
 async function handlePOST(req, res) {
-	let dir = path.join(__dirname, decodeURI(req.path));
+	const dir = path.join(__dirname, decodeURI(req.path));
 	try {
 		let fileData = JSON.parse(await fs.readFile(dir, 'utf8'));
-		let commonKeys = getCommonKeys(fileData, req.query);
+		let query = req.query;
+		let commonKeys = getCommonKeys(fileData, query);
 		while (commonKeys.length) {
 			for (const param of commonKeys) {
 				fileData = fileData[param][req.query[param]];
 				if (!fileData) {
 					return res.send({ Error: 'Data not found.' });
+				} else {
+					delete query[param];
 				}
 			}
-			commonKeys = getCommonKeys(fileData, req.query);
+			commonKeys = getCommonKeys(fileData, query);
 		}
 		return res.json(fileData);
 	} catch (err) {
@@ -114,11 +140,13 @@ async function handlePOST(req, res) {
 		return res.status(500).send({Error: 'Unable to process request.'});
 	}
 }
+*/
 
-function getDebugHTML(object, objectName = 'Object', prepend = '') {
-	let totalHTML = '<!DOCTYPE html><html><head><meta http-equiv="content-type" content="text/html; charset=UTF-8"></head><body>';
-	let innerHTML = `<p><span>${objectName.toUpperCase()}</span><br>`;
+function getDebugHTML(object, objectName = 'Object', prepend = '', depth = 0) {
+	let totalHTML = '<!DOCTYPE html><html><head><meta http-equiv="content-type" content="text/html; charset=UTF-8"></head><body style="color: white; background-color: rgb(20, 20, 20); line-height: 14pt; font-family: Comic Sans MS, Helvetica">';
+	let innerHTML = `<p><span style="color: #ff4">${objectName.toUpperCase()}</span>`;
 	for (let key in object) {
+		innerHTML += '<br><br>';
 		try {
 			if (String(object[key].toString()) == '[object Object]' && depth < 3) {
 				innerHTML += getDebugHTML(object[key], `${objectName}.${key}`, `${prepend}&#9;`, depth + 1).innerHTML;
@@ -126,8 +154,7 @@ function getDebugHTML(object, objectName = 'Object', prepend = '') {
 				innerHTML += `<span>${prepend}&#9;${objectName}[${key}] = ${object[key]}</span>`;
 			}
 		}
-		catch (err) {innerHTML += `<span>${prepend}&#9;${objectName}[${key}] is not stringable.</span>`}
-		innerHTML += '<br>';
+		catch (err) {innerHTML += `<span style="color: #f44;">${prepend}&#9;${objectName}[${key}] is not stringable.</span>`}
 	}
 	innerHTML += '</p>';
 	totalHTML += innerHTML + '</body></html>';
