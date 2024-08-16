@@ -2,6 +2,8 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs').promises;
 const fileType = require('file-type');
+const { client } = require('pg');
+const mypostgres = require('./postgres.js');
 
 const PORT = 3000;
 const HOST = '0.0.0.0';
@@ -17,7 +19,12 @@ const templateStrings = [
 app.listen(PORT, HOST);
 console.log(`Server started on ${HOST == '0.0.0.0' || HOST == '127.0.0.1' ? 'localhost' : HOST}:${PORT}`);
 
-app.get('*', handleGET);
+
+app.get('*/sql/*', GETsql);
+app.get('/public/*', GETfile);
+app.get('*', (req, res) => {
+	res.send(`<!DOCTYPE html><html lang="en"><head><meta http-equiv="refresh" content="0; URL=${req.protocol}://${req.headers.host}/public${req.originalUrl}"></head></html>`)
+});
 //app.post('*', handlePOST);
 
 function getLine(file, href) {
@@ -44,7 +51,29 @@ function getExtension(filename) {
 	return arr.length > 1 && (arr[0] || arr.length > 2) ? arr[arr.length - 1] : '';
 }
 
-async function handleGET(req, res) {
+async function GETsql(req, res) {
+
+	const dir = path.join(__dirname, decodeURI(req.path));
+	
+	try {
+		const tab = dir.match(/(?<=sql\/).*/)[0].split('/');
+		const validColumns = await mypostgres.tableColumnData(tab[0], tab[1]);
+		const requestedColumns = req.query.columns ? req.query.columns.split(',') : ['*'];
+		const sanitizedColumns = requestedColumns.map(col => {return validColumns.includes(col.trim()) ? col.trim() : null}).filter(col => col !== null);
+		const columns = sanitizedColumns.length > 0 ? sanitizedColumns.join(', ') : '*';
+		let where = '';
+		if (req.query.hasOwnProperty('where')) {
+			where = `WHERE ${req.query.where}`;
+		}
+		const query = `SELECT ${columns} FROM ${tab[1]} ${where}`;
+		return res.json((await mypostgres.sendQuery(tab[0], query)).rows);
+	} catch (err) {
+		console.log('Error: ', err);
+		return res.status(404).send('404 - File Not Found');
+	}
+}
+
+async function GETfile(req, res) {
 	let fileData = [{
 		name: '../',
 		modified: '',
